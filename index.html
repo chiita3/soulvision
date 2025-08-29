@@ -34,7 +34,7 @@
             align-items: center;
             /* 最大幅を以前の550pxに戻す */
             max-width: 550px;
-            width: 100%;
+            width: 100%; /* レスポンシブにするために常に100%幅を使用 */
             box-sizing: border-box;
         }
         canvas {
@@ -133,6 +133,8 @@
         /* 色選択の列レイアウト用CSS */
         .color-input-columns {
             display: flex;
+            /* 小さな画面では折り返す */
+            flex-wrap: wrap; /* **変更点**: 必要に応じて折り返す */
             justify-content: space-around; /* 複数列になったときに均等に配置 */
             width: 100%;
             gap: 1rem; /* 列間のスペース */
@@ -144,26 +146,40 @@
             display: flex;
             flex-direction: column;
             gap: 0.5rem; /* 項目間のスペース */
-            flex: 1; /* 利用可能なスペースを均等に占める */
+            /* flex: 1; を削除し、より柔軟な幅に */
             min-width: 150px; /* 列の最小幅 */
+            /* モバイルでは中央寄せに影響しないように調整 */
             align-items: flex-end; /* ラベルとプルダウンのペアを右寄せにする */
+            /* 小さな画面で各カラムが中央に来るように調整 */
+            flex-basis: auto; /* **変更点**: コンテンツに応じて幅を調整 */
+            margin: 0 auto; /* **変更点**: 各カラム自体を中央寄せにする */
         }
         .color-input-column.single-column {
             flex: none; /* 1列の時に横幅を固定 (またはコンテンツに合わせる) */
             width: auto; /* コンテンツの幅に合わせる */
             align-items: center; /* 1列の場合、全体を中央寄せに影響させるため */
         }
-        .color-input-column > div { /* ラベルとセレクトボックスを保持するdiv */
-            display: flex;
-            align-items: center;
-            justify-content: flex-end; /* ラベルとプルダウンのセットを右寄せにする */
-            gap: 0.5rem; /* ラベルとプルダウンの間の固定された狭い間隔 */
-            width: auto; /* コンテンツに合わせて幅を調整 */
-        }
-        .color-input-column > div label { /* Explicitly target the label */
-            white-space: nowrap; /* テキストが途中で改行されないようにする */
-            min-width: 4rem; /* ラベルの最小幅を確保 */
-            text-align: right; /* ラベルを右揃えにする */
+        /* モバイル向けに調整 */
+        @media (max-width: 600px) {
+            .color-input-columns {
+                flex-direction: column; /* 縦並びにする */
+                align-items: center; /* 中央寄せ */
+                gap: 0.75rem; /* 間隔を少し狭める */
+            }
+            .color-input-column {
+                min-width: 280px; /* スマートフォンでの読みやすさのために少し広めに */
+                width: 90%; /* 親要素の90%幅 */
+                align-items: center; /* テキストとプルダウンのペア全体を中央寄せ */
+            }
+            .color-input-column > div {
+                justify-content: center; /* ラベルとプルダウンのペア自体を中央寄せ */
+                width: auto; /* 幅を自動調整 */
+            }
+            .color-input-column > div label {
+                min-width: auto; /* 最小幅をリセット */
+                text-align: right; /* 右寄せは維持 */
+                margin-right: 0.5rem;
+            }
         }
     </style>
 </head>
@@ -280,21 +296,26 @@
                 const numLayers = parseInt(numLayersSelect.value);
 
                 let columns = [];
-                if (numLayers <= 4) {
-                    columns.push([]); // 1列
+                // 層の数に応じて列数を調整
+                if (numLayers <= 3) { // 3層以下なら1列
+                    columns.push([]);
                     for (let i = 0; i < numLayers; i++) {
                         columns[0].push(i);
                     }
-                } else if (numLayers === 5) {
-                    columns.push([0, 1, 2]); // 3項目
-                    columns.push([3, 4]);    // 2項目
-                } else if (numLayers === 6) {
-                    columns.push([0, 1, 2]); // 3項目
-                    columns.push([3, 4, 5]); // 3項目
-                } else if (numLayers === 7) {
-                    columns.push([0, 1, 2, 3]); // 4項目
-                    columns.push([4, 5, 6]);    // 3項目
+                } else if (numLayers === 4) { // 4層なら2列 (2+2)
+                    columns.push([0, 1]);
+                    columns.push([2, 3]);
+                } else if (numLayers === 5) { // 5層なら2列 (3+2)
+                    columns.push([0, 1, 2]);
+                    columns.push([3, 4]);
+                } else if (numLayers === 6) { // 6層なら2列 (3+3)
+                    columns.push([0, 1, 2]);
+                    columns.push([3, 4, 5]);
+                } else if (numLayers === 7) { // 7層なら2列 (4+3)
+                    columns.push([0, 1, 2, 3]);
+                    columns.push([4, 5, 6]);
                 }
+
 
                 // 2列レイアウト用のコンテナdivを作成
                 const columnsWrapper = document.createElement('div');
@@ -404,8 +425,6 @@
                 const coreEnlargementFactor = 2; // コア層が他の層の何倍の厚さになるか
 
                 // 各層の相対的な「太さ」を定義
-                // コア層の単位サイズは (1 + coreEnlargementFactor)
-                // 他の層の単位サイズは 1
                 let totalUnits = 0;
                 const layerUnitValues = [];
                 for (let i = 0; i < numLayers; i++) {
@@ -434,6 +453,14 @@
                     ctx.beginPath();
                     ctx.arc(centerX, centerY, currentRadius, 0, Math.PI * 2);
                     ctx.fill();
+                    ctx.closePath();
+
+                    // 境界線を描画
+                    ctx.strokeStyle = '#808080'; // **変更点**: 線の色を#808080に設定
+                    ctx.lineWidth = 1.5; // 線の太さ
+                    ctx.beginPath();
+                    ctx.arc(centerX, centerY, currentRadius, 0, Math.PI * 2);
+                    ctx.stroke(); // 線を描画
                     ctx.closePath();
                 }
             }
