@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>グラデーション円クリエーター</title>
+    <!-- Tailwind CSSを読み込み、モダンでレスポンシブなデザインを簡単に適用します -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- html2canvasライブラリを読み込みます。これにより、HTML要素を画像としてキャプチャできます。 -->
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <style>
+        /* Interフォントを読み込みます */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            /* 全体の背景色を設定 */
+            background-color: #fffff0;
+            display: flex; /* Flexboxを有効にして子要素を中央に配置 */
+            flex-direction: column; /* 垂直方向に並べる */
+            align-items: center; /* 水平方向の中央揃え */
+            justify-content: flex-start; /* 垂直方向は上寄せ */
+            min-height: 100vh; /* 画面全体の高さを確保 */
+            padding: 1rem; /* 全体にパディング */
+        }
+        /* 円と凡例をまとめるラッパーのスタイル */
+        #renderAreaWrapper {
+            background-color: #ffffff; /* 白背景 */
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem; /* 内側の余白 */
+            margin-top: 2rem; /* コントロールパネルとの間に余白 */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            /* 最大幅を以前の550pxに戻す */
+            max-width: 550px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        canvas {
+            /* キャンバスの角を丸くする */
+            border-radius: 12px; /* ラッパーのスタイルと合わせる */
+            /* 上下のマージンを自動で調整し、中央寄せ */
+            margin: 0 auto; /* ラッパー内でのマージン調整 */
+            max-width: 100%; /* 親要素 (renderAreaWrapper) に合わせて最大幅を設定 */
+            height: auto;
+        }
+        /* カスタムメッセージボックスのスタイル */
+        .custom-alert {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #fff;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            text-align: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out;
+        }
+        .custom-alert.show {
+            opacity: 1;
+            visibility: visible;
+        }
+        .custom-alert-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out;
+        }
+        .custom-alert-overlay.show {
+            opacity: 1;
+            visibility: visible;
+        }
+        /* プルダウンの基本スタイル */
+        .color-select-input {
+            padding: 0.5rem;
+            border: 2px solid;
+            border-radius: 0.375rem; /* rounded-md */
+            transition: all 0.3s ease-in-out;
+            outline: none;
+            width: 10rem; /* 固定幅を設定 */
+            background-color: white;
+            cursor: pointer;
+        }
+        .color-select-input:focus {
+            ring: 2px;
+            ring-opacity: 0.75;
+        }
+        .border-gray-300 { border-color: #d1d5db; } /* Tailwind gray-300 */
+        .focus\:ring-indigo-600:focus { ring-color: #4f46e5; }
+        .control-group {
+            border: 1px solid #e5e7eb; /* gray-200 */
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+            background-color: #ffffff;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            max-width: 100%; /* 親要素に合わせて最大幅を設定 */
+        }
+        /* 凡例コンテナのスタイル */
+        #legendContainer {
+            display: flex; /* 横並びにするためにFlexboxを使用 */
+            flex-wrap: wrap; /* 画面幅が狭い場合に折り返す */
+            justify-content: center; /* 中央寄せ */
+            gap: 1.5rem; /* 各凡例アイテム間のスペース */
+            padding: 1rem 0 0 0; /* 上に少しパディング、左右はなし */
+            margin-top: 1rem;
+            max-width: 100%; /* 親要素に合わせる */
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem; /* 色ボックスとテキストの間のスペース */
+            font-size: 0.9rem;
+            color: #333;
+        }
+        .legend-color-box {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        /* 色選択の列レイアウト用CSS */
+        .color-input-columns {
+            display: flex;
+            justify-content: space-around; /* 複数列になったときに均等に配置 */
+            width: 100%;
+            gap: 1rem; /* 列間のスペース */
+        }
+        .color-input-columns.single-column-center {
+            justify-content: center; /* 1列の場合に中央寄せ */
+        }
+        .color-input-column {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem; /* 項目間のスペース */
+            flex: 1; /* 利用可能なスペースを均等に占める */
+            min-width: 150px; /* 列の最小幅 */
+            align-items: flex-end; /* ラベルとプルダウンのペアを右寄せにする */
+        }
+        .color-input-column.single-column {
+            flex: none; /* 1列の時に横幅を固定 (またはコンテンツに合わせる) */
+            width: auto; /* コンテンツの幅に合わせる */
+            align-items: center; /* 1列の場合、全体を中央寄せに影響させるため */
+        }
+        .color-input-column > div { /* ラベルとセレクトボックスを保持するdiv */
+            display: flex;
+            align-items: center;
+            justify-content: flex-end; /* ラベルとプルダウンのセットを右寄せにする */
+            gap: 0.5rem; /* ラベルとプルダウンの間の固定された狭い間隔 */
+            width: auto; /* コンテンツに合わせて幅を調整 */
+        }
+        .color-input-column > div label { /* Explicitly target the label */
+            white-space: nowrap; /* テキストが途中で改行されないようにする */
+            min-width: 4rem; /* ラベルの最小幅を確保 */
+            text-align: right; /* ラベルを右揃えにする */
+        }
+    </style>
+</head>
+<body>
+    <!-- アプリのタイトル -->
+    <h1 class="text-4xl font-bold text-gray-800 mb-8 rounded-lg p-3">
+        Soul Vision
+    </h1>
+
+    <!-- コントロールパネル -->
+    <div class="bg-white p-6 rounded-lg shadow-lg mb-8 flex flex-col items-center space-y-4 w-full"
+         style="max-width: 550px;"> <!-- コントロールパネルの最大幅を550pxに調整 -->
+        <!-- 円の層の数選択 -->
+        <div class="flex items-center justify-between w-full">
+            <label for="numLayers" class="text-lg font-medium text-gray-700">層の数:</label>
+            <select id="numLayers"
+                    class="color-select-input border-gray-300 focus:ring-indigo-600 w-24">
+                <option value="2">2層</option>
+                <option value="3" selected>3層</option>
+                <option value="4">4層</option>
+                <option value="5">5層</option>
+                <option value="6">6層</option>
+                <option value="7">7層</option>
+            </select>
+        </div>
+
+        <!-- 動的に生成される色の選択プルダウンのコンテナ -->
+        <div id="colorInputsContainer" class="control-group flex flex-col items-start space-y-3 w-full">
+            <!-- JavaScriptによってここに色のプルダウンが追加されます -->
+        </div>
+
+        <button id="saveImageButton"
+                class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-md shadow-md
+                       transition-all duration-300 ease-in-out hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-opacity-75 self-end mt-4">
+            画像を保存
+        </button>
+    </div>
+
+    <!-- 円と凡例をまとめてキャプチャするための新しいラッパー -->
+    <div id="renderAreaWrapper">
+        <!-- キャンバス要素 -->
+        <canvas id="gradientCanvas" width="500" height="500"></canvas>
+
+        <!-- 凡例を表示するためのコンテナ -->
+        <div id="legendContainer">
+            <!-- JavaScriptによって凡例アイテムがここに挿入されます -->
+        </div>
+    </div>
+
+    <!-- カスタムアラートボックス -->
+    <div id="customAlertOverlay" class="custom-alert-overlay"></div>
+    <div id="customAlert" class="custom-alert">
+        <p id="customAlertMessage" class="text-lg font-medium text-gray-800 mb-4"></p>
+        <button id="customAlertCloseButton"
+                class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-md shadow-md
+                       transition-all duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-opacity-75">
+            閉じる
+        </button>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const canvas = document.getElementById('gradientCanvas');
+            const ctx = canvas.getContext('2d');
+            const numLayersSelect = document.getElementById('numLayers');
+            const colorInputsContainer = document.getElementById('colorInputsContainer');
+            const saveImageButton = document.getElementById('saveImageButton');
+            const legendContainer = document.getElementById('legendContainer');
+            const renderAreaWrapper = document.getElementById('renderAreaWrapper');
+
+            const customAlert = document.getElementById('customAlert');
+            const customAlertOverlay = document.getElementById('customAlertOverlay');
+            const customAlertMessage = document.getElementById('customAlertMessage');
+            const customAlertCloseButton = document.getElementById('customAlertCloseButton');
+
+            // 利用可能な色のリストとカラーコードのマップ
+            const availableColors = [
+                { name: '選択してください', value: '' },
+                { name: '白', value: '#ffffff' },
+                { name: '黄', value: '#fed420' },
+                { name: '金', value: '#c4a33e' },
+                { name: 'オレンジ', value: '#f78d03' },
+                { name: 'ピンク', value: '#eb448c' },
+                { name: '赤', value: '#e53e4f' },
+                { name: '茶', value: '#8f5d46' },
+                { name: '緑', value: '#4ec33d' },
+                { name: '水色', value: '#5170ff' },
+                { name: '青', value: '#5058f2' },
+                { name: '紫', value: '#A100FF' },
+                { name: '銀', value: '#e4e5e7' },
+                { name: 'グレー', value: '#737373' },
+                { name: '黒', value: '#000000' }
+            ];
+
+            // カスタムアラートを表示する関数
+            function showAlert(message) {
+                customAlertMessage.textContent = message;
+                customAlert.classList.add('show');
+                customAlertOverlay.classList.add('show');
+            }
+
+            // カスタムアラートを閉じる関数
+            function closeAlert() {
+                customAlert.classList.remove('show');
+                customAlertOverlay.classList.remove('show');
+            }
+
+            customAlertCloseButton.addEventListener('click', closeAlert);
+            customAlertOverlay.addEventListener('click', closeAlert);
+
+            // 色選択プルダウンを動的に生成する関数
+            function generateColorInputs() {
+                colorInputsContainer.innerHTML = ''; // 既存の入力フィールドをクリア
+                const numLayers = parseInt(numLayersSelect.value);
+
+                let columns = [];
+                if (numLayers <= 4) {
+                    columns.push([]); // 1列
+                    for (let i = 0; i < numLayers; i++) {
+                        columns[0].push(i);
+                    }
+                } else if (numLayers === 5) {
+                    columns.push([0, 1, 2]); // 3項目
+                    columns.push([3, 4]);    // 2項目
+                } else if (numLayers === 6) {
+                    columns.push([0, 1, 2]); // 3項目
+                    columns.push([3, 4, 5]); // 3項目
+                } else if (numLayers === 7) {
+                    columns.push([0, 1, 2, 3]); // 4項目
+                    columns.push([4, 5, 6]);    // 3項目
+                }
+
+                // 2列レイアウト用のコンテナdivを作成
+                const columnsWrapper = document.createElement('div');
+                columnsWrapper.className = 'color-input-columns';
+
+                // 1列表示の場合に中央寄せのクラスを追加
+                if (columns.length === 1) {
+                    columnsWrapper.classList.add('single-column-center');
+                } else {
+                    columnsWrapper.classList.remove('single-column-center');
+                }
+
+                columns.forEach((colItems, colIndex) => {
+                    const columnDiv = document.createElement('div');
+                    columnDiv.className = 'color-input-column';
+
+                    // 1列表示の場合に列のスタイルを調整
+                    if (columns.length === 1) {
+                        columnDiv.classList.add('single-column');
+                    } else {
+                        columnDiv.classList.remove('single-column');
+                    }
+
+                    colItems.forEach(i => {
+                        let labelText;
+                        if (i === 0) {
+                            labelText = 'コア';
+                        } else if (i === numLayers - 1) {
+                            labelText = '外';
+                        } else {
+                            labelText = `中間 ${i}`; // 中間 1, 中間 2, ...
+                        }
+
+                        const div = document.createElement('div');
+                        div.style.display = 'flex';
+                        div.style.alignItems = 'center';
+                        div.style.justifyContent = 'flex-end'; // ラベルとプルダウンのセットを右寄せにする
+                        div.style.gap = '0.5rem'; // ラベルとプルダウンの間の固定された狭い間隔
+
+                        const label = document.createElement('label');
+                        label.textContent = labelText;
+                        label.htmlFor = `colorLayer${i}`;
+                        label.className = 'text-lg font-medium text-gray-700 whitespace-nowrap';
+                        label.style.minWidth = '4rem'; // ラベルの最小幅を確保
+                        label.style.textAlign = 'right'; // ラベルを右揃えにする
+
+                        const select = document.createElement('select');
+                        select.id = `colorLayer${i}`;
+                        select.className = 'color-select-input border-gray-300 focus:ring-indigo-600';
+                        select.name = `colorLayer${i}`;
+
+                        availableColors.forEach(color => {
+                            const option = document.createElement('option');
+                            option.value = color.value;
+                            option.textContent = color.name;
+                            select.appendChild(option);
+                        });
+
+                        select.value = ''; // 初期値を空に設定
+
+                        select.addEventListener('change', () => {
+                            drawGradientCircle();
+                            updateLegend();
+                        });
+
+                        div.appendChild(label);
+                        div.appendChild(select);
+                        columnDiv.appendChild(div);
+                    });
+                    columnsWrapper.appendChild(columnDiv);
+                });
+                colorInputsContainer.appendChild(columnsWrapper);
+
+                drawGradientCircle();
+                updateLegend();
+            }
+
+            // 円を描画する関数
+            function drawGradientCircle() {
+                const numLayers = parseInt(numLayersSelect.value);
+                const colors = [];
+                let allColorsSelected = true;
+
+                for (let i = 0; i < numLayers; i++) {
+                    const selectElement = document.getElementById(`colorLayer${i}`);
+                    if (selectElement && selectElement.value !== '') {
+                        colors.push(selectElement.value);
+                    } else {
+                        allColorsSelected = false;
+                        break;
+                    }
+                }
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                if (!allColorsSelected) {
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    return;
+                }
+
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+                const totalRadius = Math.min(canvas.width, canvas.height) / 2;
+
+                // コア層を大きくするための拡大係数
+                const coreEnlargementFactor = 2; // コア層が他の層の何倍の厚さになるか
+
+                // 各層の相対的な「太さ」を定義
+                // コア層の単位サイズは (1 + coreEnlargementFactor)
+                // 他の層の単位サイズは 1
+                let totalUnits = 0;
+                const layerUnitValues = [];
+                for (let i = 0; i < numLayers; i++) {
+                    if (i === 0) { // コア層
+                        layerUnitValues.push(1 + coreEnlargementFactor);
+                        totalUnits += (1 + coreEnlargementFactor);
+                    } else { // その他の層
+                        layerUnitValues.push(1);
+                        totalUnits += 1;
+                    }
+                }
+
+                // 外側から内側へ描画することで、正しく重なりが表現される
+                for (let i = numLayers - 1; i >= 0; i--) {
+                    let cumulativeUnits = 0;
+                    // 現在の層の最も外側の境界に対応する単位の合計を計算
+                    for (let k = 0; k <= i; k++) {
+                        cumulativeUnits += layerUnitValues[k];
+                    }
+
+                    const currentRadius = totalRadius * (cumulativeUnits / totalUnits);
+                    const fillColor = colors[i];
+
+                    // 円を塗りつぶし
+                    ctx.fillStyle = fillColor;
+                    ctx.beginPath();
+                    ctx.arc(centerX, centerY, currentRadius, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.closePath();
+                }
+            }
+
+            // 凡例を更新する関数
+            function updateLegend() {
+                legendContainer.innerHTML = '';
+                const numLayers = parseInt(numLayersSelect.value);
+                const selectedColorsInfo = [];
+
+                let allColorsSelected = true;
+                for (let i = 0; i < numLayers; i++) {
+                    const selectElement = document.getElementById(`colorLayer${i}`);
+                    if (selectElement && selectElement.value !== '') {
+                        const selectedOption = availableColors.find(c => c.value === selectElement.value);
+                        if (selectedOption) {
+                            let displayName = '';
+                            if (i === 0) {
+                                displayName = 'コア';
+                            } else if (i === numLayers - 1) {
+                                displayName = '外';
+                            } else {
+                                displayName = `中間 ${i}`;
+                            }
+                            selectedColorsInfo.push({ name: displayName, colorName: selectedOption.name, value: selectedOption.value });
+                        }
+                    } else {
+                        allColorsSelected = false;
+                        break;
+                    }
+                }
+
+                if (!allColorsSelected) {
+                    legendContainer.innerHTML = '<p class="text-gray-500 text-sm">すべて色を選択すると凡例が表示されます</p>';
+                    return;
+                }
+
+                selectedColorsInfo.forEach(colorInfo => {
+                    const legendItem = document.createElement('div');
+                    legendItem.className = 'legend-item';
+
+                    const colorBox = document.createElement('div');
+                    colorBox.className = 'legend-color-box';
+                    colorBox.style.backgroundColor = colorInfo.value;
+
+                    const colorText = document.createElement('span');
+                    colorText.textContent = `${colorInfo.name}: ${colorInfo.colorName}`;
+
+                    legendItem.appendChild(colorBox);
+                    legendItem.appendChild(colorText);
+                    legendContainer.appendChild(legendItem);
+                });
+            }
+
+            // 画像を保存する関数 (円と凡例を含む領域を保存します)
+            async function saveImage() {
+                const numLayers = parseInt(numLayersSelect.value);
+                let allColorsSelected = true;
+                for (let i = 0; i < numLayers; i++) {
+                    const selectElement = document.getElementById(`colorLayer${i}`);
+                    if (!selectElement || selectElement.value === '') {
+                        allColorsSelected = false;
+                        break;
+                    }
+                }
+
+                if (!allColorsSelected) {
+                    showAlert('画像を保存する前に、すべての色を選択してください。');
+                    return;
+                }
+
+                await html2canvas(renderAreaWrapper, {
+                    useCORS: true,
+                    backgroundColor: '#ffffff',
+                    scale: 2
+                }).then(canvasFromHtml => {
+                    const imageDataURL = canvasFromHtml.toDataURL('image/png');
+                    const link = document.createElement('a');
+                    link.href = imageDataURL;
+                    link.download = 'gradient_circle_with_legend.png';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    showAlert('円と凡例の画像がダウンロードされました！');
+                }).catch(error => {
+                    console.error('画面キャプチャ中にエラーが発生しました:', error);
+                    showAlert('画像のキャプチャに失敗しました。');
+                });
+            }
+
+            // イベントリスナーの設定
+            numLayersSelect.addEventListener('change', () => {
+                generateColorInputs();
+                updateLegend();
+            });
+            saveImageButton.addEventListener('click', saveImage);
+
+            // 初期化
+            generateColorInputs();
+            resizeCanvas();
+
+            // キャンバスのリサイズ処理
+            function resizeCanvas() {
+                const containerWidth = renderAreaWrapper.clientWidth;
+                const newSize = Math.min(500, containerWidth - (1.5 * 16 * 2));
+                canvas.width = newSize;
+                canvas.height = newSize;
+                drawGradientCircle();
+            }
+
+            window.addEventListener('resize', resizeCanvas);
+        });
+    </script>
+</body>
+</html>
